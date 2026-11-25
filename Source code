@@ -1,0 +1,698 @@
+// source code - SkillUp
+
+
+package skillup;
+
+import java.sql.*;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.Scanner;
+
+// ABSTRACTION AND ENCAPSULATION
+abstract class User {
+    private int userId;
+    private String name;
+    private String email;
+    private String bio;
+
+    public User(int userId, String name, String email, String bio) {
+        this.userId = userId;
+        this.name = name;
+        this.email = email;
+        this.bio = bio;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getBio() {
+        return bio;
+    }
+
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
+
+    public abstract String getRole();
+}
+
+// INHERITANCE AND POLYMORPHISM
+class Learner extends User {
+    public Learner(int id, String name, String email, String bio) {
+        super(id, name, email, bio);
+    }
+
+    @Override
+    public String getRole() {
+        return "LEARNER";
+    }
+}
+
+class Teacher extends User {
+    public Teacher(int id, String name, String email, String bio) {
+        super(id, name, email, bio);
+    }
+
+    @Override
+    public String getRole() {
+        return "TEACHER";
+    }
+}
+
+// CUSTOM EXCEPTION
+class SkillupException extends Exception {
+    public SkillupException(String message) {
+        super(message);
+    }
+}
+
+// DATABASE CONNECTION
+class Database {
+    private static final String URL =
+            "jdbc:mysql://localhost:3306/skillup";
+
+    private static final String USER = "root";
+
+    public static Connection connect() throws SQLException {
+        String password = System.getenv("Nila@2230");
+
+        if (password == null) {
+            password = "";
+        }
+
+        return DriverManager.getConnection(URL, USER, password);
+    }
+}
+
+// SERVICE CLASS
+class SkillupService {
+
+    private Scanner sc;
+
+    public SkillupService(Scanner sc) {
+        this.sc = sc;
+    }
+
+    private String input(String message) {
+        System.out.print(message);
+        return sc.nextLine().trim();
+    }
+
+    private int inputInt(String message) throws SkillupException {
+        try {
+            return Integer.parseInt(input(message));
+        } catch (NumberFormatException e) {
+            throw new SkillupException("Enter a valid number.");
+        }
+    }
+
+    // REGISTER
+    public void register() {
+        System.out.println("\n===== REGISTER =====");
+
+        String name = input("Name: ");
+        String email = input("Email: ");
+        String password = input("Password: ");
+        String role = input("Role (LEARNER/TEACHER): ").toUpperCase();
+
+        if (!role.equals("LEARNER") && !role.equals("TEACHER")) {
+            System.out.println("Invalid role.");
+            return;
+        }
+
+        String sql = "INSERT INTO users(name,email,password,bio,role) "
+                   + "VALUES(?,?,?,'',?)";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, name);
+            ps.setString(2, email);
+            ps.setString(3, password);
+            ps.setString(4, role);
+
+            ps.executeUpdate();
+
+            System.out.println("Registration successful!");
+
+        } catch (SQLException e) {
+            System.out.println("Registration failed: " + e.getMessage());
+        }
+    }
+
+    // LOGIN
+    public void login() {
+        String email = input("Email: ");
+        String password = input("Password: ");
+
+        String sql = "SELECT * FROM users WHERE email=? AND password=?";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, email);
+            ps.setString(2, password);
+
+            try (ResultSet rs = ps.executeQuery()) {
+
+                if (rs.next()) {
+                    User user;
+
+                    if ("TEACHER".equalsIgnoreCase(rs.getString("role"))) {
+                        user = new Teacher(
+                                rs.getInt("user_id"),
+                                rs.getString("name"),
+                                rs.getString("email"),
+                                rs.getString("bio"));
+                    } else {
+                        user = new Learner(
+                                rs.getInt("user_id"),
+                                rs.getString("name"),
+                                rs.getString("email"),
+                                rs.getString("bio"));
+                    }
+
+                    System.out.println("\nLogin successful!");
+                    System.out.println("Welcome, " + user.getName());
+
+                    dashboard(user);
+
+                } else {
+                    System.out.println("Invalid email or password.");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Login error: " + e.getMessage());
+        }
+    }
+
+    // DASHBOARD
+    private void dashboard(User user) {
+        while (true) {
+            System.out.println("\n===== SKILLUP DASHBOARD =====");
+            System.out.println("1. My Profile");
+            System.out.println("2. Update Bio");
+            System.out.println("3. Add Skill");
+            System.out.println("4. Search Skills");
+            System.out.println("5. Send Learning Request");
+            System.out.println("6. My Requests");
+            System.out.println("7. Schedule Session");
+            System.out.println("8. My Sessions");
+            System.out.println("9. Complete Session");
+            System.out.println("10. Rate Session");
+            System.out.println("11. Logout");
+
+            int choice;
+
+            try {
+                choice = inputInt("Choice: ");
+            } catch (SkillupException e) {
+                System.out.println(e.getMessage());
+                continue;
+            }
+
+            switch (choice) {
+                case 1 -> profile(user.getUserId());
+                case 2 -> updateBio(user);
+                case 3 -> addSkill(user.getUserId());
+                case 4 -> searchSkills();
+                case 5 -> sendRequest(user.getUserId());
+                case 6 -> myRequests(user.getUserId());
+                case 7 -> scheduleSession(user.getUserId());
+                case 8 -> mySessions(user.getUserId());
+                case 9 -> completeSession(user.getUserId());
+                case 10 -> rateSession(user.getUserId());
+                case 11 -> {
+                    System.out.println("Logged out.");
+                    return;
+                }
+                default -> System.out.println("Invalid choice.");
+            }
+        }
+    }
+
+    // VIEW PROFILE
+    private void profile(int id) {
+        String sql = "SELECT * FROM users WHERE user_id=?";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setInt(1, id);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    System.out.println("\nName: " + rs.getString("name"));
+                    System.out.println("Email: " + rs.getString("email"));
+                    System.out.println("Role: " + rs.getString("role"));
+                    System.out.println("Bio: " + rs.getString("bio"));
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // UPDATE BIO
+    private void updateBio(User user) {
+        String bio = input("Enter new bio: ");
+
+        String sql = "UPDATE users SET bio=? WHERE user_id=?";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, bio);
+            ps.setInt(2, user.getUserId());
+
+            ps.executeUpdate();
+            user.setBio(bio);
+
+            System.out.println("Bio updated.");
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // GET SKILL ID
+    private int getSkillId(Connection con, String skill)
+            throws SQLException {
+
+        String find = "SELECT skill_id FROM skills WHERE skill_name=?";
+
+        try (PreparedStatement ps = con.prepareStatement(find)) {
+            ps.setString(1, skill);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("skill_id");
+                }
+            }
+        }
+
+        String insert = "INSERT INTO skills(skill_name) VALUES(?)";
+
+        try (PreparedStatement ps = con.prepareStatement(
+                insert, Statement.RETURN_GENERATED_KEYS)) {
+
+            ps.setString(1, skill);
+            ps.executeUpdate();
+
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+
+        throw new SQLException("Unable to create skill.");
+    }
+
+    // ADD SKILL
+    private void addSkill(int userId) {
+        String skill = input("Skill name: ");
+        String typeChoice = input("1. TEACH  2. LEARN: ");
+
+        String type = typeChoice.equals("1") ? "TEACH"
+                    : typeChoice.equals("2") ? "LEARN" : null;
+
+        if (type == null) {
+            System.out.println("Invalid choice.");
+            return;
+        }
+
+        try (Connection con = Database.connect()) {
+            int skillId = getSkillId(con, skill);
+
+            String sql = "INSERT INTO user_skills"
+                       + "(user_id,skill_id,skill_type) VALUES(?,?,?)";
+
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setInt(1, userId);
+                ps.setInt(2, skillId);
+                ps.setString(3, type);
+
+                ps.executeUpdate();
+
+                System.out.println("Skill added successfully!");
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Add skill failed: " + e.getMessage());
+        }
+    }
+
+    // SEARCH SKILLS
+    private void searchSkills() {
+        String skill = input("Enter skill to search: ");
+
+        String sql = "SELECT u.user_id,u.name,s.skill_name "
+                   + "FROM users u "
+                   + "JOIN user_skills us ON u.user_id=us.user_id "
+                   + "JOIN skills s ON s.skill_id=us.skill_id "
+                   + "WHERE s.skill_name LIKE ? AND us.skill_type='TEACH'";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, "%" + skill + "%");
+
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean found = false;
+
+                while (rs.next()) {
+                    found = true;
+
+                    System.out.println("Teacher ID: " + rs.getInt("user_id"));
+                    System.out.println("Teacher: " + rs.getString("name"));
+                    System.out.println("Skill: " + rs.getString("skill_name"));
+                    System.out.println("---------------------");
+                }
+
+                if (!found) {
+                    System.out.println("No teachers found.");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // SEND LEARNING REQUEST
+    private void sendRequest(int learnerId) {
+        try {
+            int teacherId = inputInt("Teacher ID: ");
+            String skill = input("Skill name: ");
+
+            if (teacherId == learnerId) {
+                System.out.println("Cannot request yourself.");
+                return;
+            }
+
+            try (Connection con = Database.connect()) {
+                String find = "SELECT s.skill_id FROM skills s "
+                            + "JOIN user_skills us ON s.skill_id=us.skill_id "
+                            + "WHERE us.user_id=? AND us.skill_type='TEACH' "
+                            + "AND LOWER(s.skill_name)=LOWER(?)";
+
+                int skillId;
+
+                try (PreparedStatement ps = con.prepareStatement(find)) {
+                    ps.setInt(1, teacherId);
+                    ps.setString(2, skill);
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            System.out.println("Teacher/skill not found.");
+                            return;
+                        }
+
+                        skillId = rs.getInt("skill_id");
+                    }
+                }
+
+                String sql = "INSERT INTO learning_requests"
+                           + "(learner_id,teacher_id,skill_id) VALUES(?,?,?)";
+
+                try (PreparedStatement ps = con.prepareStatement(sql)) {
+                    ps.setInt(1, learnerId);
+                    ps.setInt(2, teacherId);
+                    ps.setInt(3, skillId);
+
+                    ps.executeUpdate();
+
+                    System.out.println("Learning request sent!");
+                }
+            }
+
+        } catch (SQLException | SkillupException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // VIEW AND RESPOND TO REQUESTS
+    private void myRequests(int userId) {
+        String sql = "SELECT request_id,learner_id,teacher_id,status "
+                   + "FROM learning_requests "
+                   + "WHERE learner_id=? OR teacher_id=?";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setInt(1, userId);
+            ps.setInt(2, userId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean found = false;
+
+                while (rs.next()) {
+                    found = true;
+
+                    int requestId = rs.getInt("request_id");
+                    int teacherId = rs.getInt("teacher_id");
+                    String status = rs.getString("status");
+
+                    System.out.println("Request ID: " + requestId
+                            + " | Status: " + status);
+
+                    if (teacherId == userId && status.equals("PENDING")) {
+                        String action =
+                                input("1 Accept / 2 Reject / other Skip: ");
+
+                        if (action.equals("1") || action.equals("2")) {
+                            String newStatus = action.equals("1")
+                                    ? "ACCEPTED" : "REJECTED";
+
+                            String update = "UPDATE learning_requests "
+                                          + "SET status=? WHERE request_id=?";
+
+                            try (PreparedStatement up =
+                                    con.prepareStatement(update)) {
+
+                                up.setString(1, newStatus);
+                                up.setInt(2, requestId);
+                                up.executeUpdate();
+
+                                System.out.println("Request " + newStatus);
+                            }
+                        }
+                    }
+                }
+
+                if (!found) {
+                    System.out.println("No requests found.");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // SCHEDULE SESSION
+    private void scheduleSession(int teacherId) {
+        try {
+            int requestId = inputInt("Accepted request ID: ");
+
+            LocalDate date =
+                    LocalDate.parse(input("Date (YYYY-MM-DD): "));
+
+            LocalTime time =
+                    LocalTime.parse(input("Time (HH:MM:SS): "));
+
+            String sql = "INSERT INTO sessions"
+                       + "(request_id,session_date,session_time) "
+                       + "SELECT request_id,?,? FROM learning_requests "
+                       + "WHERE request_id=? AND teacher_id=? "
+                       + "AND status='ACCEPTED'";
+
+            try (Connection con = Database.connect();
+                 PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setDate(1, Date.valueOf(date));
+                ps.setTime(2, Time.valueOf(time));
+                ps.setInt(3, requestId);
+                ps.setInt(4, teacherId);
+
+                if (ps.executeUpdate() > 0) {
+                    System.out.println("Session scheduled!");
+                } else {
+                    System.out.println("Invalid accepted request.");
+                }
+            }
+
+        } catch (SQLException | SkillupException |
+                 java.time.format.DateTimeParseException e) {
+            System.out.println("Schedule error: " + e.getMessage());
+        }
+    }
+
+    // VIEW SESSIONS
+    private void mySessions(int userId) {
+        String sql = "SELECT s.session_id,s.session_date,"
+                   + "s.session_time,s.status "
+                   + "FROM sessions s JOIN learning_requests lr "
+                   + "ON s.request_id=lr.request_id "
+                   + "WHERE lr.learner_id=? OR lr.teacher_id=?";
+
+        try (Connection con = Database.connect();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setInt(1, userId);
+            ps.setInt(2, userId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean found = false;
+
+                while (rs.next()) {
+                    found = true;
+
+                    System.out.println("Session ID: "
+                            + rs.getInt("session_id"));
+                    System.out.println("Date: "
+                            + rs.getDate("session_date"));
+                    System.out.println("Time: "
+                            + rs.getTime("session_time"));
+                    System.out.println("Status: "
+                            + rs.getString("status"));
+                    System.out.println("---------------------");
+                }
+
+                if (!found) {
+                    System.out.println("No sessions found.");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // COMPLETE SESSION
+    private void completeSession(int userId) {
+        try {
+            int sessionId = inputInt("Session ID: ");
+
+            String sql = "UPDATE sessions s "
+                       + "JOIN learning_requests lr "
+                       + "ON s.request_id=lr.request_id "
+                       + "SET s.status='COMPLETED' "
+                       + "WHERE s.session_id=? "
+                       + "AND (lr.learner_id=? OR lr.teacher_id=?) "
+                       + "AND s.status='SCHEDULED'";
+
+            try (Connection con = Database.connect();
+                 PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setInt(1, sessionId);
+                ps.setInt(2, userId);
+                ps.setInt(3, userId);
+
+                if (ps.executeUpdate() > 0) {
+                    System.out.println("Session completed!");
+                } else {
+                    System.out.println(
+                            "Invalid session or already completed.");
+                }
+            }
+
+        } catch (SQLException | SkillupException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // RATE SESSION
+    private void rateSession(int userId) {
+        try {
+            int sessionId = inputInt("Completed session ID: ");
+            int rating = inputInt("Rating (1-5): ");
+
+            if (rating < 1 || rating > 5) {
+                System.out.println("Rating must be between 1 and 5.");
+                return;
+            }
+
+            String comment = input("Review: ");
+
+            String sql = "INSERT INTO reviews"
+                       + "(session_id,reviewer_id,rating,comment) "
+                       + "SELECT s.session_id,?,?,? FROM sessions s "
+                       + "JOIN learning_requests lr "
+                       + "ON s.request_id=lr.request_id "
+                       + "WHERE s.session_id=? AND lr.learner_id=? "
+                       + "AND s.status='COMPLETED'";
+
+            try (Connection con = Database.connect();
+                 PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setInt(1, userId);
+                ps.setInt(2, rating);
+                ps.setString(3, comment);
+                ps.setInt(4, sessionId);
+                ps.setInt(5, userId);
+
+                if (ps.executeUpdate() > 0) {
+                    System.out.println("Review submitted!");
+                } else {
+                    System.out.println("Session unavailable for review.");
+                }
+            }
+
+        } catch (SQLException | SkillupException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+
+// MAIN CLASS
+public class Skillup {
+
+    public static void main(String[] args) {
+
+        Scanner sc = new Scanner(System.in);
+        SkillupService service = new SkillupService(sc);
+
+        while (true) {
+
+            System.out.println("\n===== SKILLUP =====");
+            System.out.println("1. Register");
+            System.out.println("2. Login");
+            System.out.println("3. Exit");
+
+            try {
+                int choice = Integer.parseInt(sc.nextLine());
+
+                switch (choice) {
+                    case 1 -> service.register();
+
+                    case 2 -> service.login();
+
+                    case 3 -> {
+                        System.out.println(
+                                "Thank you for using Skillup!");
+                        sc.close();
+                        return;
+                    }
+
+                    default -> System.out.println("Invalid choice.");
+                }
+
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a number.");
+            }
+        }
+    }
+}
